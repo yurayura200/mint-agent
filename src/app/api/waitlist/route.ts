@@ -27,9 +27,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, mode: "fallback" });
   }
 
-  // Supabase に保存（waitlist テーブル）
+  // Supabase に保存（mint_agent_waitlist テーブル）
   try {
-    const r = await fetch(`${supabaseUrl}/rest/v1/waitlist`, {
+    const r = await fetch(`${supabaseUrl}/rest/v1/mint_agent_waitlist`, {
       method: "POST",
       headers: {
         apikey: serviceKey,
@@ -39,23 +39,22 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         email,
-        product: "mint-agent",
-        signed_up_at: new Date().toISOString(),
         source: "agent.komugi-ai.jp",
       }),
     });
 
+    // 409 conflict（重複 email）は OK として扱う
     if (!r.ok && r.status !== 409) {
       const t = await r.text();
       console.error("[waitlist:supabase-fail]", r.status, t);
-      return NextResponse.json(
-        { error: "save failed" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "save failed", detail: t }, { status: 500 });
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[waitlist:exception]", err);
-    return NextResponse.json({ error: "save failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "save failed", detail: String(err) },
+      { status: 500 },
+    );
   }
 }

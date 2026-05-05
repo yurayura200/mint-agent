@@ -55,8 +55,11 @@ export async function POST(req: Request) {
 async function handleEvent(payload: SlackEventCallback) {
   const { team_id, event } = payload;
 
-  // Bot mention only (ignore bot's own messages)
-  if (event.type !== "app_mention" || event.bot_id) return;
+  // Process app_mention OR direct message in IM, ignore bot's own messages
+  const isMention = event.type === "app_mention";
+  const isDM = event.type === "message" && (event as { channel_type?: string }).channel_type === "im";
+  if (!isMention && !isDM) return;
+  if (event.bot_id) return;
   if (!event.text || !event.channel) return;
 
   // Look up workspace's bot token

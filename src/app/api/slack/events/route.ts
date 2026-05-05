@@ -44,7 +44,21 @@ export async function POST(req: Request) {
   }
 
   if (payload.type === "event_callback") {
-    // Acknowledge fast (Slack expects 200 within 3s), process async
+    // Debug mode: ?debug=1 で同期実行し結果を返す
+    const url = new URL(req.url);
+    if (url.searchParams.get("debug") === "1") {
+      try {
+        const result = await handleEvent(payload);
+        return NextResponse.json({ ok: true, debug: result });
+      } catch (e) {
+        return NextResponse.json({
+          ok: true,
+          debug_error: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack?.slice(0, 800) : undefined,
+        });
+      }
+    }
+    // Production: ack fast, process async
     queueMicrotask(() => handleEvent(payload).catch((e) => console.error("[slack:event-error]", e)));
     return NextResponse.json({ ok: true });
   }
@@ -52,47 +66,71 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-async function handleEvent(payload: SlackEventCallback) {
+async function handleEvent(payload: SlackEventCallback): Promise<Record<string, unknown>> {
   const { team_id, event } = payload;
+  const debug: Record<string, unknown> = {
+    event_type: event.type,
+    channel_type: (event as { channel_type?: string }).channel_type,
+    team_id,
+  };
 
-  // Process app_mention OR direct message in IM, ignore bot's own messages
   const isMention = event.type === "app_mention";
   const isDM = event.type === "message" && (event as { channel_type?: string }).channel_type === "im";
-  if (!isMention && !isDM) return;
-  if (event.bot_id) return;
-  if (!event.text || !event.channel) return;
+  debug.isMention = isMention;
+  debug.isDM = isDM;
 
-  // Look up workspace's bot token
+  if (!isMention && !isDM) {
+    debug.skipped = "not_mention_or_dm";
+    return debug;
+  }
+  if (event.bot_id) {
+    debug.skipped = "from_bot";
+    return debug;
+  }
+  if (!event.text || !event.channel) {
+    debug.skipped = "no_text_or_channel";
+    return debug;
+  }
+
   const rows = await sbSelect<WorkspaceRow>("mint_agent_workspaces", {
     team_id: `eq.${team_id}`,
   });
+  debug.ws_lookup_count = rows.length;
   const ws = rows[0];
   if (!ws) {
+    debug.skipped = "workspace_not_found";
     console.error("[slack] workspace not found", team_id);
-    return;
+    return debug;
   }
+  debug.ws_team = ws.team_id;
+  debug.bot_token_prefix = ws.bot_token.slice(0, 20);
 
-  // Extract user prompt (strip bot mention)
   const prompt = event.text.replace(/<@[A-Z0-9]+>\s*/g, "").trim();
+  debug.prompt = prompt;
+
   if (!prompt) {
-    await postSlackMessage(
+    const r = await postSlackMessage(
       ws.bot_token,
       event.channel,
-      "話しかけてくれてありがとう。何やればいい？例：『議事録 → CRM 投稿』『この問い合わせメール、過去履歴見て返信 draft』",
+      "話しかけてくれてありがとう。何やればいい？",
       event.thread_ts ?? event.ts,
     );
-    return;
+    debug.empty_post_result = r;
+    return debug;
   }
 
-  // Generate reply via Claude (placeholder for full agent engine)
   const reply = await generateReply(prompt);
+  debug.reply_length = reply.length;
+  debug.reply_preview = reply.slice(0, 200);
 
-  await postSlackMessage(
+  const postResult = await postSlackMessage(
     ws.bot_token,
     event.channel,
     reply,
     event.thread_ts ?? event.ts,
   );
+  debug.post_result = postResult;
+  return debug;
 }
 
 async function generateReply(prompt: string): Promise<string> {

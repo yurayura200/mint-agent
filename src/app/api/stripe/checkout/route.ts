@@ -60,7 +60,10 @@ export async function POST(req: Request) {
   if (!r.ok) {
     const t = await r.text();
     console.error("[stripe:checkout-fail]", r.status, t);
-    return NextResponse.json({ error: "stripe error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "stripe error", status: r.status, detail: t.slice(0, 500) },
+      { status: 500 },
+    );
   }
   const session = (await r.json()) as { id: string; url: string };
   return NextResponse.json({ url: session.url });

@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { WaitlistForm } from "./waitlist-form";
+import { PricingCheckoutButton } from "./pricing-buttons";
 
 export default function Home() {
   return (
@@ -145,6 +147,7 @@ export default function Home() {
               {
                 name: "Free",
                 price: "¥0",
+                cta: { type: "link" as const, label: "Slack に追加", href: "/install" },
                 features: [
                   "月20タスクまで",
                   "Slack 連携",
@@ -156,6 +159,7 @@ export default function Home() {
                 price: "¥9,800",
                 priceUnit: "/月",
                 highlight: true,
+                cta: { type: "checkout" as const, plan: "solo" as const, label: "Solo を始める" },
                 features: [
                   "月500タスク",
                   "Slack + Notion + Gmail",
@@ -167,6 +171,7 @@ export default function Home() {
                 name: "Team",
                 price: "¥29,800",
                 priceUnit: "/月",
+                cta: { type: "checkout" as const, plan: "team" as const, label: "Team を始める" },
                 features: [
                   "月3,000タスク",
                   "5メンバーまで",
@@ -193,7 +198,7 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                <ul className="space-y-2 text-sm text-white/70">
+                <ul className="mb-6 space-y-2 text-sm text-white/70">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2">
                       <span className="mt-1 text-emerald-400">✓</span>
@@ -201,6 +206,20 @@ export default function Home() {
                     </li>
                   ))}
                 </ul>
+                {plan.cta.type === "link" ? (
+                  <Link
+                    href={plan.cta.href}
+                    className="block w-full rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-center text-sm font-bold text-white transition-colors hover:bg-white/10"
+                  >
+                    {plan.cta.label}
+                  </Link>
+                ) : (
+                  <PricingCheckoutButton
+                    plan={plan.cta.plan}
+                    label={plan.cta.label}
+                    highlight={plan.highlight}
+                  />
+                )}
               </div>
             ))}
           </div>
